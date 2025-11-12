@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package fileservice;
+
+option go_package = "github.com/YotoHana/tages-test-case/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+service FileService {
+    rpc Upload (stream UploadRequest) returns (UploadResponse);
+    rpc Download (DownloadRequest) returns (stream DownloadResponse);
+    rpc List (ListRequest) returns (ListResponse);
+}
+
+message UploadRequest {
+    oneof data {
+        string name = 1;
+        bytes chunk = 2;
+    }
+}
+
+message UploadResponse {
+    string id = 1;
+}
+
+message DownloadRequest {
+    string id = 1;
+}
+
+message DownloadResponse {
+    bytes chunk = 1;
+}
+
+message ListRequest {}
+
+message ListResponse {
+    message Item {
+        string id = 1;
+        string name = 2;
+        google.protobuf.Timestamp created_at = 3;
+        google.protobuf.Timestamp updated_at = 4;
+    }
+}
