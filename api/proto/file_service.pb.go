@@ -274,6 +274,7 @@ func (*ListRequest) Descriptor() ([]byte, []int) {
 
 type ListResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ListResponse_Item   `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -306,6 +307,13 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
 func (*ListResponse) Descriptor() ([]byte, []int) {
 	return file_api_proto_file_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListResponse) GetItems() []*ListResponse_Item {
+	if x != nil {
+		return x.Items
+	}
+	return nil
 }
 
 type ListResponse_Item struct {
@@ -391,8 +399,9 @@ const file_api_proto_file_service_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"(\n" +
 	"\x10DownloadResponse\x12\x14\n" +
 	"\x05chunk\x18\x01 \x01(\fR\x05chunk\"\r\n" +
-	"\vListRequest\"\xb1\x01\n" +
-	"\fListResponse\x1a\xa0\x01\n" +
+	"\vListRequest\"\xe7\x01\n" +
+	"\fListResponse\x124\n" +
+	"\x05items\x18\x01 \x03(\v2\x1e.fileservice.ListResponse.ItemR\x05items\x1a\xa0\x01\n" +
 	"\x04Item\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
@@ -429,19 +438,20 @@ var file_api_proto_file_service_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_api_proto_file_service_proto_depIdxs = []int32{
-	7, // 0: fileservice.ListResponse.Item.created_at:type_name -> google.protobuf.Timestamp
-	7, // 1: fileservice.ListResponse.Item.updated_at:type_name -> google.protobuf.Timestamp
-	0, // 2: fileservice.FileService.Upload:input_type -> fileservice.UploadRequest
-	2, // 3: fileservice.FileService.Download:input_type -> fileservice.DownloadRequest
-	4, // 4: fileservice.FileService.List:input_type -> fileservice.ListRequest
-	1, // 5: fileservice.FileService.Upload:output_type -> fileservice.UploadResponse
-	3, // 6: fileservice.FileService.Download:output_type -> fileservice.DownloadResponse
-	5, // 7: fileservice.FileService.List:output_type -> fileservice.ListResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 0: fileservice.ListResponse.items:type_name -> fileservice.ListResponse.Item
+	7, // 1: fileservice.ListResponse.Item.created_at:type_name -> google.protobuf.Timestamp
+	7, // 2: fileservice.ListResponse.Item.updated_at:type_name -> google.protobuf.Timestamp
+	0, // 3: fileservice.FileService.Upload:input_type -> fileservice.UploadRequest
+	2, // 4: fileservice.FileService.Download:input_type -> fileservice.DownloadRequest
+	4, // 5: fileservice.FileService.List:input_type -> fileservice.ListRequest
+	1, // 6: fileservice.FileService.Upload:output_type -> fileservice.UploadResponse
+	3, // 7: fileservice.FileService.Download:output_type -> fileservice.DownloadResponse
+	5, // 8: fileservice.FileService.List:output_type -> fileservice.ListResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_file_service_proto_init() }

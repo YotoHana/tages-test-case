@@ -7,3 +7,6 @@ proto:
 
 proto-clean:
 	rm -f api/proto/*.pb.go
+
+run-server:
+	go run ./cmd/main.go
