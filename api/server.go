@@ -13,6 +13,7 @@ import (
 
 const (
 	ErrUploadFile = "failed upload file"
+	ErrListFiles = "failed list files"
 )
 
 type Server struct {
@@ -20,7 +21,12 @@ type Server struct {
 	storage *storage.Storage
 }
 func (s *Server) List(ctx context.Context, _ *pb.ListRequest) (*pb.ListResponse, error) {
-	return &pb.ListResponse{Items: []*pb.ListResponse_Item{}}, nil
+	items, err := s.storage.GetFileList()
+	if err != nil {
+		return &pb.ListResponse{}, status.Errorf(codes.Internal, ErrListFiles)
+	}
+
+	return &pb.ListResponse{Items: items}, nil
 }
 
 func (s *Server) Upload(stream pb.FileService_UploadServer) error {
