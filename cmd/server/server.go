@@ -17,7 +17,10 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	fileServer := api.New()
+	fileServer, err := api.New()
+	if err != nil {
+		log.Fatalf("failed create new gRPC server: %v", err)
+	}
 	pb.RegisterFileServiceServer(s, fileServer)
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {

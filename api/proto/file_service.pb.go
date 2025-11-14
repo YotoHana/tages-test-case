@@ -26,7 +26,7 @@ type UploadRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Data:
 	//
-	//	*UploadRequest_Name
+	//	*UploadRequest_Filename
 	//	*UploadRequest_Chunk
 	Data          isUploadRequest_Data `protobuf_oneof:"data"`
 	unknownFields protoimpl.UnknownFields
@@ -70,10 +70,10 @@ func (x *UploadRequest) GetData() isUploadRequest_Data {
 	return nil
 }
 
-func (x *UploadRequest) GetName() string {
+func (x *UploadRequest) GetFilename() string {
 	if x != nil {
-		if x, ok := x.Data.(*UploadRequest_Name); ok {
-			return x.Name
+		if x, ok := x.Data.(*UploadRequest_Filename); ok {
+			return x.Filename
 		}
 	}
 	return ""
@@ -92,15 +92,15 @@ type isUploadRequest_Data interface {
 	isUploadRequest_Data()
 }
 
-type UploadRequest_Name struct {
-	Name string `protobuf:"bytes,1,opt,name=name,proto3,oneof"`
+type UploadRequest_Filename struct {
+	Filename string `protobuf:"bytes,1,opt,name=filename,proto3,oneof"`
 }
 
 type UploadRequest_Chunk struct {
 	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,proto3,oneof"`
 }
 
-func (*UploadRequest_Name) isUploadRequest_Data() {}
+func (*UploadRequest_Filename) isUploadRequest_Data() {}
 
 func (*UploadRequest_Chunk) isUploadRequest_Data() {}
 
@@ -388,9 +388,9 @@ var File_api_proto_file_service_proto protoreflect.FileDescriptor
 
 const file_api_proto_file_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/proto/file_service.proto\x12\vfileservice\x1a\x1fgoogle/protobuf/timestamp.proto\"E\n" +
-	"\rUploadRequest\x12\x14\n" +
-	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x12\x16\n" +
+	"\x1capi/proto/file_service.proto\x12\vfileservice\x1a\x1fgoogle/protobuf/timestamp.proto\"M\n" +
+	"\rUploadRequest\x12\x1c\n" +
+	"\bfilename\x18\x01 \x01(\tH\x00R\bfilename\x12\x16\n" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\x06\n" +
 	"\x04data\" \n" +
 	"\x0eUploadResponse\x12\x0e\n" +
@@ -460,7 +460,7 @@ func file_api_proto_file_service_proto_init() {
 		return
 	}
 	file_api_proto_file_service_proto_msgTypes[0].OneofWrappers = []any{
-		(*UploadRequest_Name)(nil),
+		(*UploadRequest_Filename)(nil),
 		(*UploadRequest_Chunk)(nil),
 	}
 	type x struct{}
