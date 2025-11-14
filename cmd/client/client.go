@@ -141,5 +141,25 @@ func downloadFile(client pb.FileServiceClient, fileID string, outputPath string)
 }
 
 func listFile(client pb.FileServiceClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	defer cancel()
 
+	resp, err := client.List(ctx, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create response: %v", err))
+	}
+
+	items := resp.GetItems()
+
+	fmt.Println("List Files:")
+
+	for _, item := range items {
+		fmt.Printf(
+			"ID: %v | FileName: %v | Created_At: %v | Updated_At: %v \n",
+			item.Id,
+			item.Name,
+			item.CreatedAt.AsTime(),
+			item.UpdatedAt.AsTime(),
+		)
+	}
 }
