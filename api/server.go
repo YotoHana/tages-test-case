@@ -12,8 +12,11 @@ import (
 )
 
 const (
-	ErrUploadFile = "failed upload file"
-	ErrListFiles = "failed list files"
+	ErrUploadFile = "Failed upload file"
+	ErrListFiles = "Failed list files"
+	ErrDownloadFile = "Failed download file"
+	ErrFileNotFound = "File not found"
+	chunkSize = 64 * 1024
 )
 
 type Server struct {
@@ -23,7 +26,7 @@ type Server struct {
 func (s *Server) List(ctx context.Context, _ *pb.ListRequest) (*pb.ListResponse, error) {
 	items, err := s.storage.GetFileList()
 	if err != nil {
-		return &pb.ListResponse{}, status.Errorf(codes.Internal, ErrListFiles)
+		return &pb.ListResponse{}, status.Errorf(codes.NotFound, ErrFileNotFound)
 	}
 
 	return &pb.ListResponse{Items: items}, nil
@@ -55,8 +58,44 @@ func (s *Server) Upload(stream pb.FileService_UploadServer) error {
 	
 }
 
-func (s *Server) Download(_ *pb.DownloadRequest, stream pb.FileService_DownloadServer) error {
-	return status.Errorf(codes.Unimplemented, "download not implemented yet")
+func (s *Server) Download(req *pb.DownloadRequest, stream pb.FileService_DownloadServer) error {
+	fullPath, originalName, err := s.storage.FindFileByID(req.GetId())
+	if err != nil {
+		return status.Error(codes.Internal, ErrDownloadFile)
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return status.Error(codes.Internal, ErrDownloadFile)
+	}
+	defer file.Close()
+
+	err = stream.Send(&pb.DownloadResponse{
+		Payload: &pb.DownloadResponse_Info{
+			Info: &pb.FileInfo{Name: originalName},
+		},
+	})
+	if err != nil {
+		return status.Error(codes.Internal, ErrDownloadFile)
+	}
+
+	buf := make([]byte, chunkSize)
+
+	for {
+		n, err := file.Read(buf)
+		if err != nil {
+			return status.Error(codes.Internal, ErrDownloadFile)
+		}
+
+		if n > 0 {
+			stream.Send(&pb.DownloadResponse{
+				Payload: &pb.DownloadResponse_Chunk{
+					Chunk: buf[:n],
+				},
+			})
+		}
+	}
+
 }
 
 func New() (*Server, error) {

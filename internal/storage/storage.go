@@ -35,14 +35,14 @@ func (s *Storage) CreateFile(fileName string) (file *os.File, id string, err err
 }
 
 func (s *Storage) GetFileList() (items []*pb.ListResponse_Item, err error) {
-	entry, err := os.ReadDir(storageRoot)
+	entries, err := os.ReadDir(storageRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	items = make([]*pb.ListResponse_Item, 0, len(entry))
+	items = make([]*pb.ListResponse_Item, 0, len(entries))
 
-	for _, e := range entry {
+	for _, e := range entries {
 		fileInfo, err := e.Info()
 		if err != nil {
 			return nil, err
@@ -65,6 +65,22 @@ func (s *Storage) GetFileList() (items []*pb.ListResponse_Item, err error) {
 	return items, nil
 }
 
-func (s *Storage) GetFile() {
+func (s *Storage) FindFileByID(id string) (fullPath string, originalName string, err error) {
+	entries, err := os.ReadDir(storageRoot)
+	if err != nil {
+		return "", "", err
+	}
 
+	for _, e := range entries {
+		fileName := strings.Split(e.Name(), "_")
+
+		if fileName[0] == id {
+			fullPath = filepath.Join(storageRoot, e.Name())
+			originalName = fileName[1]
+
+			return fullPath, originalName, nil
+		}
+	}
+
+	return "", "", err
 }

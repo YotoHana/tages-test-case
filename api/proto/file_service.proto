@@ -28,7 +28,10 @@ message DownloadRequest {
 }
 
 message DownloadResponse {
-    bytes chunk = 1;
+    oneof payload {
+        FileInfo info = 1;
+        bytes chunk = 2;
+    }
 }
 
 message ListRequest {}
@@ -41,4 +44,8 @@ message ListResponse {
         google.protobuf.Timestamp updated_at = 4;
     }
     repeated Item items = 1;
+}
+
+message FileInfo {
+    string name = 1;
 }
