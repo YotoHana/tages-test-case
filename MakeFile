@@ -14,5 +14,8 @@ run-server:
 run-client:
 	go run ./cmd/client/client.go $(filter-out $@,$(MAKECMDGOALS))
 
+test-limits:
+	go run ./cmd/client/client.go test-limits
+
 %:
 	@:
