@@ -82,7 +82,7 @@ func testRateLimits(client pb.FileServiceClient) {
 	fmt.Println("Test 1: Upload rate limit (max 10 concurrent)")
 	fmt.Println("Sending 15 concurrent upload requests...")
 
-	testUploadLimit(client, testFile, 15)
+	testUploadLimit(testFile, 15)
 
 	time.Sleep(time.Second * 2)
 
@@ -110,7 +110,7 @@ func createTestFile() string {
 	return tmpFile.Name()
 }
 
-func testUploadLimit(client pb.FileServiceClient, testFile string, sumReqs int) {
+func testUploadLimit(testFile string, sumReqs int) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var startWg sync.WaitGroup
@@ -132,7 +132,7 @@ func testUploadLimit(client pb.FileServiceClient, testFile string, sumReqs int) 
 			startWg.Done()
 			startWg.Wait()
 
-			err := uploadFileQuiet(client, testFile)
+			err := uploadFileQuietNewConn(testFile)
 
 			mu.Lock()
 			if err == nil {
@@ -143,7 +143,7 @@ func testUploadLimit(client pb.FileServiceClient, testFile string, sumReqs int) 
 				fmt.Printf("Request %2d: RATE LIMITED\n", id)
 			} else {
 				otherErrorCount++
-				fmt.Printf("Request %2d: ERROR (%v)", id, err)
+				fmt.Printf("Request %2d: ERROR (%v)\n", id, err)
 			}
 			mu.Unlock()
 		}(i)
@@ -252,7 +252,25 @@ func uploadFileQuiet(client pb.FileServiceClient, filePath string) error {
 	}
 
 	_, err = stream.CloseAndRecv()
-	return err
+	if err == io.EOF {
+		return nil
+	}
+
+	return nil
+}
+
+func uploadFileQuietNewConn(filePath string) error {
+	conn, err := grpc.NewClient(
+        serverAddr,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        return err
+    }
+    defer conn.Close()
+
+    client := pb.NewFileServiceClient(conn)
+    return uploadFileQuiet(client, filePath)
 }
 
 func uploadFile(client pb.FileServiceClient, path string) {
