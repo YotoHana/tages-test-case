@@ -6,11 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	pb "github.com/YotoHana/tages-test-case/api/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -24,6 +27,7 @@ func main() {
 		fmt.Println(" client upload <filepath>")
 		fmt.Println(" client download <file_id> <output_path>")
 		fmt.Println(" client list")
+		fmt.Println(" client test-limits")
 		os.Exit(1)
 	}
 
@@ -59,11 +63,196 @@ func main() {
 
 	case "list":
 		listFile(client)
+	
+	case "test-limits":
+		testRateLimits(client)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		os.Exit(1)
 	}
+}
+
+func testRateLimits(client pb.FileServiceClient) {
+	fmt.Println("Testing rate limits...")
+
+	testFile := createTestFile()
+	defer os.Remove(testFile)
+
+	fmt.Println("Test 1: Upload rate limit (max 10 concurrent)")
+	fmt.Println("Sending 15 concurrent upload requests...")
+
+	testUploadLimit(client, testFile, 15)
+
+	time.Sleep(time.Second * 2)
+
+	fmt.Println("Test 2: List rate limit (max 100 concurrent)")
+	fmt.Println("Sending 105 concurrent list requests...")
+
+	testListLimit(client, 105)
+
+	fmt.Println("Rate limit testing complete!")
+}
+
+func createTestFile() string {
+	tmpFile, err := os.CreateTemp("", "test_upload_*.dat")
+	if err != nil {
+		panic(err)
+	}
+
+	data := make([]byte, 20 * 1024 * 1024)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	tmpFile.Write(data)
+	tmpFile.Close()
+
+	return tmpFile.Name()
+}
+
+func testUploadLimit(client pb.FileServiceClient, testFile string, sumReqs int) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var startWg sync.WaitGroup
+
+	startWg.Add(sumReqs)
+
+	successCount := 0
+	rateLimitedCount := 0
+	otherErrorCount := 0
+
+	startTime := time.Now()
+
+	for i := 1; i <= sumReqs; i++ {
+		wg.Add(1)
+
+		go func(id int){
+			defer wg.Done()
+
+			startWg.Done()
+			startWg.Wait()
+
+			err := uploadFileQuiet(client, testFile)
+
+			mu.Lock()
+			if err == nil {
+				successCount++
+				fmt.Printf("Request %2d: SUCCESS\n", id)
+			} else if status.Code(err) == codes.ResourceExhausted {
+				rateLimitedCount++
+				fmt.Printf("Request %2d: RATE LIMITED\n", id)
+			} else {
+				otherErrorCount++
+				fmt.Printf("Request %2d: ERROR (%v)", id, err)
+			}
+			mu.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+	duration := time.Since(startTime)
+
+	fmt.Printf("Results (completed in %v):\n", duration)
+	fmt.Printf("Successful: %d (expected ~10)\n", successCount)
+	fmt.Printf("Rate limited: %d (expected ~%d)\n", rateLimitedCount, sumReqs - 10)
+	fmt.Printf("Other errors: %d (expected 0)\n", otherErrorCount)
+
+	if successCount >= 9 && successCount <= 11 {
+		fmt.Println("Upload rate limiting works correctly!")
+	} else {
+		fmt.Println("Unexpected results. Expected ~10 successful uploads.")
+	}
+}
+
+func testListLimit(client pb.FileServiceClient, sumReqs int) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	
+	successCount := 0
+	rateLimitedCount := 0
+
+	startTime := time.Now()
+
+	for i := 1; i <= sumReqs; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			_, err := client.List(ctx, &pb.ListRequest{})
+
+			mu.Lock()
+			if err == nil {
+				successCount++
+			} else if status.Code(err) == codes.ResourceExhausted {
+				rateLimitedCount++
+			}
+			mu.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+	duration := time.Since(startTime)
+
+	fmt.Printf("Results (completed in %v):\n", duration)
+	fmt.Printf("Successful:    %d (expected: ~100)\n", successCount)
+	fmt.Printf("Rate Limited:  %d (expected: ~%d)\n", rateLimitedCount, sumReqs-100)
+
+	if successCount >= 95 && successCount <= 105 {
+		fmt.Println("List rate limiting works correctly!")
+	} else {
+		fmt.Println("Unexpected results. Expected ~100 successful requests.")
+	}
+}
+
+func uploadFileQuiet(client pb.FileServiceClient, filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	stream, err := client.Upload(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = stream.Send(&pb.UploadRequest{
+		Data: &pb.UploadRequest_Filename{
+			Filename: filepath.Base(filePath),
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	buffer := make([]byte, chunkSize)
+	for {
+		n, err := file.Read(buffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(&pb.UploadRequest{
+			Data: &pb.UploadRequest_Chunk{
+				Chunk: buffer[:n],
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = stream.CloseAndRecv()
+	return err
 }
 
 func uploadFile(client pb.FileServiceClient, path string) {
