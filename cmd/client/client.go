@@ -137,7 +137,41 @@ func uploadFile(client pb.FileServiceClient, path string) {
 }
 
 func downloadFile(client pb.FileServiceClient, fileID string, outputPath string) {
+	var file *os.File
 
+	err := os.MkdirAll(outputPath, 0755)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create directory: %v", err))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	defer cancel()
+	
+	stream, err := client.Download(ctx, &pb.DownloadRequest{Id: fileID})
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create stream: %v", err))
+	}
+
+	for {
+		resp, err := stream.Recv()
+		
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get response: %v", err))
+		}
+
+		if file == nil {
+			file, err = os.Create(filepath.Join(outputPath, resp.GetInfo().GetName()))
+			if err != nil {
+				panic(fmt.Sprintf("Failed to create file: %v", err))
+			}
+		}
+
+		file.Write(resp.GetChunk())
+	}
 }
 
 func listFile(client pb.FileServiceClient) {
