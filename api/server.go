@@ -61,12 +61,12 @@ func (s *Server) Upload(stream pb.FileService_UploadServer) error {
 func (s *Server) Download(req *pb.DownloadRequest, stream pb.FileService_DownloadServer) error {
 	fullPath, originalName, err := s.storage.FindFileByID(req.GetId())
 	if err != nil {
-		return status.Error(codes.Internal, ErrDownloadFile)
+		return status.Error(codes.NotFound, ErrFileNotFound)
 	}
 
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return status.Error(codes.Internal, ErrDownloadFile)
+		return status.Error(codes.Internal, "Failed to open file")
 	}
 	defer file.Close()
 
@@ -76,15 +76,19 @@ func (s *Server) Download(req *pb.DownloadRequest, stream pb.FileService_Downloa
 		},
 	})
 	if err != nil {
-		return status.Error(codes.Internal, ErrDownloadFile)
+		return status.Error(codes.Internal, "Failed to send stream")
 	}
 
 	buf := make([]byte, chunkSize)
 
 	for {
 		n, err := file.Read(buf)
+		if err == io.EOF {
+			break
+		}
+
 		if err != nil {
-			return status.Error(codes.Internal, ErrDownloadFile)
+			return status.Error(codes.Internal, "failed to read file")
 		}
 
 		if n > 0 {
@@ -96,6 +100,7 @@ func (s *Server) Download(req *pb.DownloadRequest, stream pb.FileService_Downloa
 		}
 	}
 
+	return nil
 }
 
 func New() (*Server, error) {
