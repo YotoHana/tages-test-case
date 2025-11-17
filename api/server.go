@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"time"
 
 	pb "github.com/YotoHana/tages-test-case/api/proto"
 	"github.com/YotoHana/tages-test-case/internal/storage"
