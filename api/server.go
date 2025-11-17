@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"os"
+	"time"
 
 	pb "github.com/YotoHana/tages-test-case/api/proto"
 	"github.com/YotoHana/tages-test-case/internal/storage"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -18,8 +20,17 @@ const (
 type Server struct {
 	pb.UnimplementedFileServiceServer
 	storage *storage.Storage
+
+	uploadLimiter *rate.Limiter
+	listLimiter *rate.Limiter
 }
 func (s *Server) List(ctx context.Context, _ *pb.ListRequest) (*pb.ListResponse, error) {
+	reservation := s.listLimiter.ReserveN(time.Now(), 1)
+	if !reservation.OK() {
+		return nil, status.Error(codes.ResourceExhausted, "too many concurrent list requests")
+	}
+	defer reservation.Cancel()
+
 	items, err := s.storage.GetFileList()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read file directory: %v", err)
@@ -31,6 +42,11 @@ func (s *Server) List(ctx context.Context, _ *pb.ListRequest) (*pb.ListResponse,
 func (s *Server) Upload(stream pb.FileService_UploadServer) error {
 	var id string
 	var file *os.File
+
+	reservation := s.uploadLimiter.ReserveN(time.Now(), 1)
+	if !reservation.OK() {
+		return status.Error(codes.ResourceExhausted, "too many concurrent uploads")
+	}
 
 	defer func() {
 		if file != nil {
@@ -73,6 +89,11 @@ func (s *Server) Upload(stream pb.FileService_UploadServer) error {
 }
 
 func (s *Server) Download(req *pb.DownloadRequest, stream pb.FileService_DownloadServer) error {
+	reservation := s.uploadLimiter.ReserveN(time.Now(), 1)
+	if !reservation.OK() {
+		return status.Error(codes.ResourceExhausted, "too many concurrent downloads")
+	}
+
 	fileID := req.GetId()
 
 	if fileID == "" {
@@ -139,6 +160,8 @@ func New() (*Server, error) {
 	
 	server := &Server{
 		storage: storage,
+		listLimiter: rate.NewLimiter(rate.Inf, 100),
+		uploadLimiter: rate.NewLimiter(rate.Inf, 10),
 	}
 
 	return server, nil
