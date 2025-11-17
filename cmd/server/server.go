@@ -6,6 +6,7 @@ import (
 
 	"github.com/YotoHana/tages-test-case/api"
 	pb "github.com/YotoHana/tages-test-case/api/proto"
+	"github.com/YotoHana/tages-test-case/internal/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -16,7 +17,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	s := grpc.NewServer()
+
+	streamLimiter := semaphore.NewSemaphore(10)
+	unaryLimiter := semaphore.NewSemaphore(100)
+
+	s := grpc.NewServer(
+		grpc.ChainStreamInterceptor(semaphore.RateLimitStream(streamLimiter)),
+		grpc.ChainUnaryInterceptor(semaphore.RateLimitUnary(unaryLimiter)),
+	)
 	fileServer, err := api.New()
 	if err != nil {
 		log.Fatalf("failed create new gRPC server: %v", err)
