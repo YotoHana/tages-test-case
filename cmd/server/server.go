@@ -4,7 +4,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/YotoHana/tages-test-case/api"
+	"github.com/YotoHana/tages-test-case/internal/api"
 	pb "github.com/YotoHana/tages-test-case/api/proto"
 	"github.com/YotoHana/tages-test-case/internal/semaphore"
 	"google.golang.org/grpc"
