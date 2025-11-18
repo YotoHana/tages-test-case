@@ -27,7 +27,7 @@
 
 ## Технологии
 
-- **Go 1.21+**
+- **Go 1.25+**
 - **gRPC** - коммуникация клиент-сервер
 - **Protocol Buffers** - сериализация данных
 - **Semaphore** - rate limiting через буферизованные каналы
@@ -37,7 +37,7 @@
 ### Предварительные требования
 
 ```bash
-# Go 1.21 или выше
+# Go 1.25 или выше
 go version
 
 # Protocol Buffers compiler
@@ -64,6 +64,8 @@ make proto
 
 ### Запуск
 
+#### Локально
+
 ```bash
 # Терминал 1: Запустить сервер
 make run-server
@@ -72,6 +74,36 @@ make run-server
 make upload FILE=test.jpg
 make list
 make download ID=<file_id> OUT=./downloads
+```
+
+#### С Docker Compose
+
+```bash
+# Запустить сервер в Docker
+make docker-compose-up
+
+# Использовать клиент (в другом терминале)
+make upload FILE=test.jpg
+make list
+
+# Остановить
+make docker-compose-down
+```
+
+#### С Docker (без compose)
+
+```bash
+# Собрать образ
+make docker-build
+
+# Запустить контейнер
+make docker-run
+
+# Использовать клиент
+make upload FILE=test.jpg
+
+# Остановить
+make docker-stop
 ```
 
 ## Использование
@@ -394,7 +426,6 @@ message UploadResponse {
 3. Сервер сохраняет файл и возвращает уникальный ID
 
 **Ограничения:**
-- Максимальный размер файла: 100MB
 - Filename не может быть пустым
 - Файл не может быть пустым (0 байт)
 
@@ -489,25 +520,23 @@ Invalid request: file size exceeds maximum allowed size of 104857600 bytes
 ```
 uploads/
 ├── a3f5c892d1e4b6c7_photo.jpg
-├── b2e4d3a1c5f6e7d8_document.pdf
 └── c1f2e3d4a5b6c7d8_image.png
 ```
 
 **Где:**
-- `id` - уникальный 16-символьный идентификатор (SHA256 hash)
+- `id` - uuid
 - `original_name` - оригинальное имя файла
 
 ### Генерация ID
 
 ```go
-hasher := sha256.New()
-hasher.Write([]byte(fmt.Sprintf("%s_%d", filename, timestamp)))
-fileID := hex.EncodeToString(hasher.Sum(nil))[:16]
+    id = uuid.NewString()
+	resultName := strings.Join([]string{id, fileName}, "_")
+	file, err = os.Create(filepath.Join(storageRoot, resultName))
 ```
 
 **Преимущества:**
 - Уникальность гарантирована
-- Фиксированная длина (16 символов)
 - Невозможно угадать другие ID
 - Легко искать файл по ID (имя начинается с ID)
 
@@ -515,7 +544,6 @@ fileID := hex.EncodeToString(hasher.Sum(nil))[:16]
 
 ### Реализованные меры
 
-- Ограничение размера файла (100MB)
 - Валидация имени файла (проверка на path traversal)
 - Уникальные имена файлов (защита от перезаписи)
 - Rate limiting (защита от DDoS)
@@ -537,7 +565,6 @@ fileID := hex.EncodeToString(hasher.Sum(nil))[:16]
 ### Характеристики
 
 - **Chunk size**: 64KB (баланс между скоростью и памятью)
-- **Max file size**: 100MB
 - **Concurrent uploads**: 10
 - **Concurrent downloads**: 10
 - **Concurrent list**: 100

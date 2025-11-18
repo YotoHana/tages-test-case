@@ -121,3 +121,57 @@ lint:
 		echo "golangci-lint not installed. Install with:"; \
 		echo "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
+
+# ==================== DOCKER ====================
+
+## docker-build: Build Docker image
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t file-storage-grpc:latest .
+	@echo "Docker image built successfully"
+
+## docker-run: Run server in Docker container
+docker-run:
+	@echo "Starting server in Docker..."
+	docker run -d \
+		--name file-storage-server \
+		-p 50051:50051 \
+		-v $(PWD)/uploads:/app/uploads \
+		file-storage-grpc:latest
+	@echo "Server started in Docker (container: file-storage-server)"
+
+## docker-stop: Stop Docker container
+docker-stop:
+	@echo "Stopping Docker container..."
+	docker stop file-storage-server || true
+	docker rm file-storage-server || true
+	@echo "Container stopped"
+
+## docker-logs: View Docker container logs
+docker-logs:
+	docker logs -f file-storage-server
+
+## docker-compose-up: Start services with docker-compose
+docker-compose-up:
+	@echo "Starting services with docker-compose..."
+	docker-compose up -d
+	@echo "Services started. Use 'make docker-compose-logs' to view logs"
+
+## docker-compose-down: Stop services with docker-compose
+docker-compose-down:
+	@echo "Stopping services..."
+	docker-compose down
+	@echo "Services stopped"
+
+## docker-compose-logs: View docker-compose logs
+docker-compose-logs:
+	docker-compose logs -f
+
+## docker-clean: Remove Docker images and containers
+docker-clean:
+	@echo "Cleaning Docker resources..."
+	docker-compose down -v || true
+	docker stop file-storage-server || true
+	docker rm file-storage-server || true
+	docker rmi file-storage-grpc:latest || true
+	@echo "Docker resources cleaned"
