@@ -36,7 +36,8 @@ func main() {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to connect: %v", err))
+		fmt.Printf("Failed to connect: %v\n", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
@@ -50,7 +51,6 @@ func main() {
 			fmt.Println("Usage: client upload <filepath>")
 			os.Exit(1)
 		}
-
 		uploadFile(client, os.Args[2])
 
 	case "download":
@@ -58,14 +58,13 @@ func main() {
 			fmt.Println("Usage: client download <file_id> <output_path>")
 			os.Exit(1)
 		}
-
 		downloadFile(client, os.Args[2], os.Args[3])
 
 	case "list":
 		listFile(client)
 	
 	case "test-limits":
-		testRateLimits(client)
+		testRateLimits()
 
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
@@ -73,7 +72,7 @@ func main() {
 	}
 }
 
-func testRateLimits(client pb.FileServiceClient) {
+func testRateLimits() {
 	fmt.Println("Testing rate limits...")
 
 	testFile := createTestFile()
@@ -89,7 +88,7 @@ func testRateLimits(client pb.FileServiceClient) {
 	fmt.Println("Test 2: List rate limit (max 100 concurrent)")
 	fmt.Println("Sending 105 concurrent list requests...")
 
-	testListLimit(client, 105)
+	testListLimit(105)
 
 	fmt.Println("Rate limit testing complete!")
 }
@@ -132,7 +131,14 @@ func testUploadLimit(testFile string, sumReqs int) {
 			startWg.Done()
 			startWg.Wait()
 
-			err := uploadFileQuietNewConn(testFile)
+			client, conn, err := newConn()
+			if err != nil {
+				fmt.Printf("Failed to create connection %d: %v\n", id, err)
+				return
+			}
+			defer conn.Close()
+
+			err = uploadFileQuiet(client, testFile)
 
 			mu.Lock()
 			if err == nil {
@@ -164,10 +170,12 @@ func testUploadLimit(testFile string, sumReqs int) {
 	}
 }
 
-func testListLimit(client pb.FileServiceClient, sumReqs int) {
+func testListLimit(sumReqs int) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	var wgStart sync.WaitGroup
 	
+	wgStart.Add(sumReqs)
 	successCount := 0
 	rateLimitedCount := 0
 
@@ -178,10 +186,20 @@ func testListLimit(client pb.FileServiceClient, sumReqs int) {
 		go func(id int) {
 			defer wg.Done()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
 			defer cancel()
 
-			_, err := client.List(ctx, &pb.ListRequest{})
+			client, conn, err := newConn()
+			if err != nil {
+				fmt.Printf("Failed to create connection %d: %v\n", id, err)
+				return
+			}
+			defer conn.Close()
+
+			wgStart.Done()
+			wgStart.Wait()
+
+			_, err = client.List(ctx, &pb.ListRequest{})
 
 			mu.Lock()
 			if err == nil {
@@ -197,8 +215,8 @@ func testListLimit(client pb.FileServiceClient, sumReqs int) {
 	duration := time.Since(startTime)
 
 	fmt.Printf("Results (completed in %v):\n", duration)
-	fmt.Printf("Successful:    %d (expected: ~100)\n", successCount)
-	fmt.Printf("Rate Limited:  %d (expected: ~%d)\n", rateLimitedCount, sumReqs-100)
+	fmt.Printf("Successful: %d (expected ~100)\n", successCount)
+	fmt.Printf("Rate limited: %d (expected ~%d)\n", rateLimitedCount, sumReqs-100)
 
 	if successCount >= 95 && successCount <= 105 {
 		fmt.Println("List rate limiting works correctly!")
@@ -228,6 +246,10 @@ func uploadFileQuiet(client pb.FileServiceClient, filePath string) error {
 		},
 	})
 	if err != nil {
+		_, recvErr := stream.CloseAndRecv()
+		if recvErr != nil {
+			return recvErr
+		}
 		return err
 	}
 
@@ -247,42 +269,43 @@ func uploadFileQuiet(client pb.FileServiceClient, filePath string) error {
 			},
 		})
 		if err != nil {
+			_, recvErr := stream.CloseAndRecv()
+			if recvErr != nil {
+				return recvErr
+			}
 			return err
 		}
 	}
 
 	_, err = stream.CloseAndRecv()
-	if err == io.EOF {
-		return nil
-	}
-
-	return nil
+	return err
 }
 
-func uploadFileQuietNewConn(filePath string) error {
+func newConn() (pb.FileServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
-        serverAddr,
-        grpc.WithTransportCredentials(insecure.NewCredentials()),
-    )
-    if err != nil {
-        return err
-    }
-    defer conn.Close()
+		serverAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 
-    client := pb.NewFileServiceClient(conn)
-    return uploadFileQuiet(client, filePath)
+	client := pb.NewFileServiceClient(conn)
+	return client, conn, nil
 }
 
 func uploadFile(client pb.FileServiceClient, path string) {
 	file, err := os.Open(path)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to open file: %v", err))
+		fmt.Printf("Failed to open file: %v\n", err)
+		return
 	}
 	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		panic(fmt.Sprintf("Failed to get file info: %v", err))
+		fmt.Printf("Failed to get file info: %v\n", err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
@@ -290,7 +313,8 @@ func uploadFile(client pb.FileServiceClient, path string) {
 
 	stream, err := client.Upload(ctx)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to create stream: %v", err))
+		handleError(err, "upload")
+		return
 	}
 
 	err = stream.Send(&pb.UploadRequest{
@@ -299,7 +323,13 @@ func uploadFile(client pb.FileServiceClient, path string) {
 		},
 	})
 	if err != nil {
-		panic(fmt.Sprintf("Failed to send file name: %v", err))
+		_, recvErr := stream.CloseAndRecv()
+		if recvErr != nil {
+			handleError(recvErr, "upload")
+			return
+		}
+		fmt.Printf("Failed to send file name: %v\n", err)
+		return
 	}
 
 	buffer := make([]byte, chunkSize)
@@ -315,7 +345,8 @@ func uploadFile(client pb.FileServiceClient, path string) {
 		}
 
 		if err != nil {
-			panic(fmt.Sprintf("Failed to read file: %v", err))
+			fmt.Printf("Failed to read file: %v\n", err)
+			return
 		}
 
 		err = stream.Send(&pb.UploadRequest{
@@ -324,7 +355,13 @@ func uploadFile(client pb.FileServiceClient, path string) {
 			},
 		})
 		if err != nil {
-			panic(fmt.Sprintf("Failed to send chunk: %v", err))
+			_, recvErr := stream.CloseAndRecv()
+			if recvErr != nil {
+				handleError(recvErr, "upload")
+				return
+			}
+			fmt.Printf("Failed to send chunk: %v\n", err)
+			return
 		}
 
 		totalSent += n
@@ -336,7 +373,8 @@ func uploadFile(client pb.FileServiceClient, path string) {
 
 	response, err := stream.CloseAndRecv()
 	if err != nil {
-		panic(fmt.Sprintf("Failed to receive response: %v", err))
+		handleError(err, "upload")
+		return
 	}
 
 	fmt.Printf("Upload successful!\n")
@@ -348,7 +386,8 @@ func downloadFile(client pb.FileServiceClient, fileID string, outputPath string)
 
 	err := os.MkdirAll(outputPath, 0755)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to create directory: %v", err))
+		fmt.Printf("Failed to create directory: %v\n", err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
@@ -356,7 +395,8 @@ func downloadFile(client pb.FileServiceClient, fileID string, outputPath string)
 	
 	stream, err := client.Download(ctx, &pb.DownloadRequest{Id: fileID})
 	if err != nil {
-		panic(fmt.Sprintf("Failed to create stream: %v", err))
+		handleError(err, "download")
+		return
 	}
 
 	for {
@@ -367,40 +407,88 @@ func downloadFile(client pb.FileServiceClient, fileID string, outputPath string)
 		}
 
 		if err != nil {
-			panic(fmt.Sprintf("Failed to get response: %v", err))
+			if file != nil {
+				file.Close()
+				os.Remove(file.Name())
+			}
+			handleError(err, "download")
+			return
 		}
 
 		if file == nil {
 			file, err = os.Create(filepath.Join(outputPath, resp.GetInfo().GetName()))
 			if err != nil {
-				panic(fmt.Sprintf("Failed to create file: %v", err))
+				fmt.Printf("Failed to create file: %v\n", err)
+				return
 			}
+			defer file.Close()
 		}
 
 		file.Write(resp.GetChunk())
 	}
+
+	fmt.Println("Download successful!")
 }
 
 func listFile(client pb.FileServiceClient) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
 	defer cancel()
 
-	resp, err := client.List(ctx, nil)
+	resp, err := client.List(ctx, &pb.ListRequest{})
 	if err != nil {
-		panic(fmt.Sprintf("Failed to create response: %v", err))
+		handleError(err, "list")
+		return
 	}
 
 	items := resp.GetItems()
+
+	if len(items) == 0 {
+		fmt.Println("No files found.")
+		return
+	}
 
 	fmt.Println("List Files:")
 
 	for _, item := range items {
 		fmt.Printf(
-			"ID: %v | FileName: %v | Created_At: %v | Updated_At: %v \n",
+			"ID: %v | FileName: %v | Created_At: %v | Updated_At: %v\n",
 			item.Id,
 			item.Name,
 			item.CreatedAt.AsTime(),
 			item.UpdatedAt.AsTime(),
 		)
+	}
+}
+
+func handleError(err error, operation string) {
+	st, ok := status.FromError(err)
+	
+	if !ok {
+		fmt.Printf("Error: %s failed: %v\n", operation, err)
+		return
+	}
+
+	switch st.Code() {
+	case codes.ResourceExhausted:
+		fmt.Printf("Rate limit exceeded: Too many concurrent %s requests.\n", operation)
+		fmt.Println("Please try again in a few seconds.")
+		
+	case codes.NotFound:
+		fmt.Printf("File not found: %s\n", st.Message())
+		
+	case codes.InvalidArgument:
+		fmt.Printf("Invalid request: %s\n", st.Message())
+		
+	case codes.Internal:
+		fmt.Printf("Server error: %s\n", st.Message())
+		
+	case codes.DeadlineExceeded:
+		fmt.Printf("Request timeout: Operation took too long.\n")
+		
+	case codes.Unavailable:
+		fmt.Printf("Server unavailable: Cannot connect to server.\n")
+		
+	default:
+		fmt.Printf("Error: %s failed: %s (code: %s)\n", operation, st.Message(), st.Code())
 	}
 }
