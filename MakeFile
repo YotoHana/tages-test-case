@@ -1,21 +1,123 @@
-.PHONY: proto proto-clean lint
+.PHONY: help proto proto-clean run-server run-client test-limits upload download list clean deps build lint
 
+SERVER_DIR = ./cmd/server
+CLIENT_DIR = ./cmd/client
+PROTO_DIR = ./api/proto
+UPLOADS_DIR = ./uploads
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo "Available commands:"
+	@echo ""
+	@echo "  make proto          - Generate Go code from proto files"
+	@echo "  make proto-clean    - Remove generated proto files"
+	@echo ""
+	@echo "  make run-server     - Start gRPC server"
+	@echo "  make run-client ARGS='<args>' - Run client with arguments"
+	@echo ""
+	@echo "  make upload FILE=<path>        - Upload file"
+	@echo "  make download ID=<id> OUT=<path> - Download file"
+	@echo "  make list           - List all files"
+	@echo "  make test-limits    - Test rate limits"
+	@echo ""
+	@echo "  make build          - Build server and client binaries"
+	@echo "  make clean          - Remove uploaded files and binaries"
+	@echo "  make deps           - Install dependencies"
+	@echo "  make lint           - Run linter (requires golangci-lint)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make upload FILE=test.jpg"
+	@echo "  make download ID=abc123 OUT=./downloads"
+	@echo "  make run-client ARGS='upload test.jpg'"
+
+## proto: Generate Go code from proto files
 proto:
+	@echo "Generating proto files..."
 	protoc --go_out=. --go_opt=paths=source_relative \
-       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-       ./api/proto/file_service.proto
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		$(PROTO_DIR)/file_service.proto
+	@echo "Proto files generated successfully"
 
+## proto-clean: Remove generated proto files
 proto-clean:
-	rm -f api/proto/*.pb.go
+	@echo "Cleaning proto files..."
+	rm -f $(PROTO_DIR)/*.pb.go
+	@echo "Proto files cleaned"
 
+## run-server: Start gRPC server
 run-server:
-	go run ./cmd/server/server.go
+	@echo "Starting gRPC server..."
+	go run $(SERVER_DIR)/server.go
 
+## run-client: Run client with custom arguments
+## Usage: make run-client ARGS='upload test.jpg'
 run-client:
-	go run ./cmd/client/client.go $(filter-out $@,$(MAKECMDGOALS))
+	@if [ -z "$(ARGS)" ]; then \
+		echo "Usage: make run-client ARGS='<command> [args...]'"; \
+		echo "Examples:"; \
+		echo "  make run-client ARGS='upload test.jpg'"; \
+		echo "  make run-client ARGS='download abc123 ./output'"; \
+		echo "  make run-client ARGS='list'"; \
+		exit 1; \
+	fi
+	go run $(CLIENT_DIR)/client.go $(ARGS)
 
+## upload: Upload a file
+## Usage: make upload FILE=path/to/file.jpg
+upload:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make upload FILE=path/to/file"; \
+		exit 1; \
+	fi
+	go run $(CLIENT_DIR)/client.go upload $(FILE)
+
+## download: Download a file
+## Usage: make download ID=file_id OUT=output_path
+download:
+	@if [ -z "$(ID)" ] || [ -z "$(OUT)" ]; then \
+		echo "Usage: make download ID=file_id OUT=output_path"; \
+		exit 1; \
+	fi
+	go run $(CLIENT_DIR)/client.go download $(ID) $(OUT)
+
+## list: List all files
+list:
+	go run $(CLIENT_DIR)/client.go list
+
+## test-limits: Test rate limits
 test-limits:
-	go run ./cmd/client/client.go test-limits
+	@echo "Testing rate limits..."
+	go run $(CLIENT_DIR)/client.go test-limits
 
-%:
-	@:
+## build: Build server and client binaries
+build:
+	@echo "Building server..."
+	go build -o bin/server $(SERVER_DIR)/server.go
+	@echo "Building client..."
+	go build -o bin/client $(CLIENT_DIR)/client.go
+	@echo "Binaries built in ./bin/"
+
+## clean: Remove uploaded files and binaries
+clean:
+	@echo "Cleaning up..."
+	rm -rf $(UPLOADS_DIR)/*
+	rm -rf bin/
+	@echo "Cleanup complete"
+
+## deps: Install dependencies
+deps:
+	@echo "Installing dependencies..."
+	go mod download
+	go mod tidy
+	@echo "Dependencies installed"
+
+## lint: Run linter
+lint:
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Running linter..."; \
+		golangci-lint run ./...; \
+	else \
+		echo "golangci-lint not installed. Install with:"; \
+		echo "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+	fi
